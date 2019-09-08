@@ -1,8 +1,10 @@
-﻿using System;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.DirectoryServices;
 using System.Linq;
+using System.Security.Principal;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -49,6 +51,7 @@ namespace AdLookup2
                 ds.PropertiesToLoad.Add("ADSPath");
                 ds.PropertiesToLoad.Add("cn");
                 ds.PropertiesToLoad.Add("thumbnailPhoto");
+                ds.PropertiesToLoad.Add("jpegPhoto");
                 ds.PropertiesToLoad.Add("GivenName");
                 ds.PropertiesToLoad.Add("sn");
                 SearchResultCollection users = ds.FindAll();
@@ -58,7 +61,22 @@ namespace AdLookup2
                 foreach (SearchResult user in users)
                 {
                     BitmapImage photoBitmap = null;
-                    if (user.Properties["thumbnailPhoto"].Count > 0)
+                    if (user.Properties["jpegPhoto"].Count > 0)
+                    {
+                        byte[] photoBytes = user.Properties["jpegPhoto"][0] as byte[];
+                        System.IO.MemoryStream ms = new System.IO.MemoryStream(photoBytes);
+                        try
+                        {
+                            photoBitmap = new BitmapImage();
+                            photoBitmap.BeginInit();
+                            photoBitmap.StreamSource = ms;
+                            photoBitmap.DecodePixelWidth = 50;
+                            photoBitmap.EndInit();
+                        }
+                        catch
+                        { }
+                    }
+                    if (user.Properties["thumbnailPhoto"].Count > 0 && photoBitmap == null)
                     {
                         byte[] photoBytes = user.Properties["thumbnailPhoto"][0] as byte[];
                         System.IO.MemoryStream ms = new System.IO.MemoryStream(photoBytes);
@@ -244,14 +262,23 @@ namespace AdLookup2
                 if (cellWidth > maxCellWidth)
                     maxCellWidth = cellWidth; 
                 tr.Cells.Add(tc);
-                var content = new TableCell(PropParagraph(val, de.Properties[TranslateToAttribute(name)]));
+                ICollection props;
+                try
+                {
+                    props = de.Properties[TranslateToAttribute(name)];
+                }
+                catch (Exception e)
+                {
+                    props = new List<string> { e.ToString() };
+                }
+                var content = new TableCell(PropParagraph(val, props));
                 if (odd)
                     content.Background = _alternateRowBrush;
                 odd = !odd;
                 tr.Cells.Add(content);
                 table.RowGroups[0].Rows.Add(tr);
 
-                AddProp(val, de.Properties[TranslateToAttribute(name)]);
+                AddProp(val, props);
             }
             table.Columns[0].Width = new GridLength(maxCellWidth + 10);
             propertiesRichTextBox.IsDocumentEnabled = true;
@@ -311,8 +338,15 @@ namespace AdLookup2
                         }
                         else if (bytes.Length == 28)
                         {
-                            System.Security.Principal.SecurityIdentifier sid = new System.Security.Principal.SecurityIdentifier(bytes, 0);
-                            valueString = sid.ToString();
+
+                            try
+                            {
+                                SecurityIdentifier sid = new SecurityIdentifier(bytes, 0);
+                                valueString = sid.ToString();
+                            }
+                            catch
+                            {   
+                            }
                         }
                         else
                         {
@@ -424,8 +458,15 @@ namespace AdLookup2
                         }
                         else if (bytes.Length == 28)
                         {
-                            System.Security.Principal.SecurityIdentifier sid = new System.Security.Principal.SecurityIdentifier(bytes, 0);
-                            p.Inlines.Add(sid.ToString());
+                            try
+                            {
+                                System.Security.Principal.SecurityIdentifier sid = new System.Security.Principal.SecurityIdentifier(bytes, 0);
+                                p.Inlines.Add(sid.ToString());
+                            }
+                            catch
+                            {
+                                p.Inlines.Add(valueString);
+                            }
                         }
                         else
                         {
